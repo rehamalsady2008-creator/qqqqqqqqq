@@ -1,56 +1,46 @@
-name: Build Android APK and Deploy
+name: Build iOS App
 
 on:
   push:
-    branches:
-      - main
-
-permissions:
-  contents: write
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
-  build-apk-and-web:
-    runs-on: ubuntu-latest
+  build-ios:
+    runs-on: macos-latest
+
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
         with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+          node-version: '22'
 
       - name: Install dependencies
-        run: bun install
+        run: npm install
 
-      - name: Build Web App
-        run: bun run build
+      - name: Build Web Assets
+        run: npm run build
 
-      - name: Install Capacitor CLI & Android
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      - name: Build iOS App for Device (Unsigned)
         run: |
-          bun add -D @capacitor/cli
-          bun add @capacitor/android
-          bun x cap add android
-          bun x cap sync android
-
-      - name: Build Android APK
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath build/App.xcarchive archive CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+          
+      - name: Export Archive / Create Payload
         run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug
-
-      - name: Upload APK Artifact
+          cd ios/App/build/App.xcarchive/Products/Applications
+          mkdir Payload
+          mv App.app Payload/
+          zip -r ../../../App.zip Payload
+          
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Subhat-Noor-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Deploy Web to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist
+          name: ios-app-payload
+          path: ios/App/build/App.zip
